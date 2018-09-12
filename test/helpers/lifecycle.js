@@ -3,6 +3,7 @@
  */
 
 var Sails = require('sails/lib/app');
+var SHSockets = require('sails-hook-sockets');
 var _ = require('lodash');
 
 // Use a weird port to avoid tests failing if we
@@ -28,7 +29,7 @@ module.exports = {
     var io = require('socket.io-client');
     var sailsIO = require('../../sails.io.js');
 
-    if (typeof opts == 'function') {
+    if (_.isFunction(opts)) {
       cb = opts;
       opts = {};
     }
@@ -38,20 +39,40 @@ module.exports = {
     var app = Sails();
     app.lift({
       log: { level: 'error' },
+      globals: {
+        sails: true,
+        _: false,
+        async: false,
+        models: false
+      },
       port: TEST_SERVER_PORT,
       sockets: {
-        authorization: false,
-        transports: opts.transports
-      }
+        transports: opts.transports,
+        path: opts.path,
+        beforeConnect: opts.beforeConnect || false
+      },
+      hooks: {
+        grunt: false,
+        sockets: SHSockets
+      },
+      routes: _.extend({
+        '/sails.io.js': function(req, res) {
+          res.header('Content-type', 'application/javascript');
+          require('fs').createReadStream(require('path').resolve(__dirname, '..', '..', 'dist', 'sails.io.js')).pipe(res);
+        }
+      }, opts.routes || {})
     },function (err) {
-      if (err) return cb(err);
-      
+      if (err) { return cb(err); }
+      // console.log('lifted');
+
       // Instantiate socket client.
       io = sailsIO(io);
       // Set some options.
       io.sails.url = opts.url || 'http://localhost:'+TEST_SERVER_PORT;
       // Disable the sails.io.js client's logger
       io.sails.environment = opts.environment || 'production';
+      // Don't automatically reconnect after being disconnected
+      io.sails.reconnection = false;
 
       if (typeof (opts.multiplex) != 'undefined') {
         io.sails.multiplex = opts.multiplex;
@@ -73,6 +94,22 @@ module.exports = {
         io.sails.query = opts.query;
       }
 
+      if (typeof (opts.headers) != 'undefined') {
+        io.sails.headers = opts.headers;
+      }
+
+      if (typeof (opts.initialConnectionHeaders) != 'undefined') {
+        io.sails.initialConnectionHeaders = opts.initialConnectionHeaders;
+      }
+
+      if (typeof (opts.path) != 'undefined') {
+        io.sails.path = opts.path;
+      }
+
+      if (typeof (opts.reconnection) != 'undefined') {
+        io.sails.reconnection = opts.reconnection;
+      }
+
       // Globalize sails app as `server`
       global.server = app;
 
@@ -80,7 +117,7 @@ module.exports = {
       global.io = io;
       return cb(err);
     });
-    
+
   },
 
 
@@ -89,30 +126,25 @@ module.exports = {
 
   teardown: function (done) {
 
-    // If the socket never connected, don't worry about disconnecting
-    // TODO:
-    // cancel the connection attempt if one exists-
-    // or better yet, extend `disconnect()` to do this
-    if (!global.io || !io.socket || !io.socket.isConnected()) {
-      return done();
+    if (global.io && io.socket && io.socket.isConnected()) {
+      // Disconnect socket
+      io.socket.disconnect();
     }
-    
-    // Disconnect socket
-    io.socket.disconnect();
+
     setTimeout(function ensureDisconnect () {
-      
-      // Ensure socket is actually disconnected
-      var isActuallyDisconnected = (io.socket.isConnected() === false);
-      
+
       // Tear down sails server
+      // console.log('lowering...');
       global.server.lower(function (){
+
+        // console.log('lowered');
 
         // Delete globals (just in case-- shouldn't matter)
         delete global.server;
         delete global.io;
-        return done();
+        return setTimeout(done, 100);
       });
-      
+
     }, 0);
   }
 };

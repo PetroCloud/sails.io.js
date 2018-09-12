@@ -9,7 +9,7 @@ var _  = require('lodash');
 
 function _dotToObject(obj, path) {
   return path.split('.').reduce(function objectIndex(obj, i) {
-    return obj[i]
+    return obj[i];
   }, obj);
 }
 
@@ -21,15 +21,15 @@ module.exports = function setupRoutes (expectedResponses) {
 
   /**
    * Bind routes which respond with the expected data.
-   * 
+   *
    * @param  {Object} expectedResponses
    * @global {Sails} sails
    */
   return function configuredFn () {
     _.each(expectedResponses, function (expectedResponse, routeAddress) {
       sails.router.bind(routeAddress, function (req, res) {
-        // console.log('\n------ calling res.send(%s, "%s")', expectedResponse.statusCode || 200, expectedResponse.body);
-        return res.send(expectedResponse.statusCode || 200, expectedResponse.req && _dotToObject(req, expectedResponse.req) || expectedResponse.body);
+        // console.log('\n------ calling res.send(%s, "%s")', expectedResponse.statusCode || 200, expectedResponse.req && _dotToObject(req, expectedResponse.req) || expectedResponse.body);
+        return res.status(expectedResponse.statusCode || 200).send(expectedResponse.req && _dotToObject(req, expectedResponse.req) || expectedResponse.body);
       });
     });
   };
